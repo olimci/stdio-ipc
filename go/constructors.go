@@ -5,7 +5,7 @@ import (
 	"os/exec"
 )
 
-func FromCmd(cmd exec.Cmd, handler Handler) (*IPC, error) {
+func FromCmd(cmd *exec.Cmd, handler Handler) (*IPC, error) {
 	i := New(cmd.Stdin, cmd.Stdout, handler)
 
 	if err := cmd.Start(); err != nil {
