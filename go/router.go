@@ -59,8 +59,8 @@ func (r *Router) Handle(kind string, fn func(context.Context, json.RawMessage) (
 	return nil
 }
 
-// HandleTyped registers a typed handler for the given kind.
-func HandleTyped[T any](r *Router, kind string, fn func(context.Context, T) (any, error)) error {
+// Handle registers a typed handler for the given kind.
+func Handle[T any](r *Router, kind string, fn func(context.Context, T) (any, error)) error {
 	if r == nil {
 		return errors.New("ipc: nil router")
 	}

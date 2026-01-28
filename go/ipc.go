@@ -67,6 +67,11 @@ func (i *IPC) Close() {
 	})
 }
 
+func Call[T1, T2 any](i *IPC, ctx context.Context, req T1) (resp T2, err error) {
+	err = i.Call(ctx, req, &resp)
+	return resp, err
+}
+
 func (i *IPC) Call(ctx context.Context, req any, resp any) error {
 	if ctx == nil {
 		ctx = context.Background()
