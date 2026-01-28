@@ -1,0 +1,16 @@
+[project]
+name = "stdio-ipc"
+version = "0.1.0"
+description = "Python helpers for stdio-based IPC"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["ipc"]
