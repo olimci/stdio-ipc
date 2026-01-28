@@ -11,8 +11,7 @@ import (
 
 type Handler func(ctx context.Context, req json.RawMessage) (any, error)
 
-// Endpoint implements a request/response protocol over JSON-encoded stdio streams.
-type Endpoint struct {
+type IPC struct {
 	enc     *json.Encoder
 	dec     *json.Decoder
 	handler Handler
@@ -28,8 +27,8 @@ type Endpoint struct {
 	closed    chan struct{}
 }
 
-func NewEndpoint(r io.Reader, w io.Writer, handler Handler) *Endpoint {
-	return &Endpoint{
+func New(r io.Reader, w io.Writer, handler Handler) *IPC {
+	return &IPC{
 		enc:     json.NewEncoder(w),
 		dec:     json.NewDecoder(r),
 		handler: handler,
@@ -38,31 +37,31 @@ func NewEndpoint(r io.Reader, w io.Writer, handler Handler) *Endpoint {
 	}
 }
 
-func (e *Endpoint) Start() {
-	e.startOnce.Do(func() {
-		go e.readLoop()
+func (i *IPC) Start() {
+	i.startOnce.Do(func() {
+		go i.readLoop()
 	})
 }
 
-func (e *Endpoint) Done() <-chan struct{} {
-	return e.closed
+func (i *IPC) Done() <-chan struct{} {
+	return i.closed
 }
 
-func (e *Endpoint) Close() {
-	e.closeOnce.Do(func() {
-		close(e.closed)
+func (i *IPC) Close() {
+	i.closeOnce.Do(func() {
+		close(i.closed)
 
-		e.pendingMu.Lock()
-		for id, ch := range e.pending {
-			delete(e.pending, id)
+		i.pendingMu.Lock()
+		for id, ch := range i.pending {
+			delete(i.pending, id)
 			ch <- response{err: errors.New("ipc: endpoint closed")}
 			close(ch)
 		}
-		e.pendingMu.Unlock()
+		i.pendingMu.Unlock()
 	})
 }
 
-func (e *Endpoint) Call(ctx context.Context, req any, resp any) error {
+func (i *IPC) Call(ctx context.Context, req any, resp any) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -72,17 +71,17 @@ func (e *Endpoint) Call(ctx context.Context, req any, resp any) error {
 		return err
 	}
 
-	id := e.nextID.Add(1)
+	id := i.nextID.Add(1)
 	ch := make(chan response, 1)
 
-	e.pendingMu.Lock()
-	e.pending[id] = ch
-	e.pendingMu.Unlock()
+	i.pendingMu.Lock()
+	i.pending[id] = ch
+	i.pendingMu.Unlock()
 
-	if err := e.send(wireMessage{Type: "request", ID: id, Payload: payload}); err != nil {
-		e.pendingMu.Lock()
-		delete(e.pending, id)
-		e.pendingMu.Unlock()
+	if err := i.send(wireMessage{Type: "request", ID: id, Payload: payload}); err != nil {
+		i.pendingMu.Lock()
+		delete(i.pending, id)
+		i.pendingMu.Unlock()
 		return err
 	}
 
@@ -100,60 +99,60 @@ func (e *Endpoint) Call(ctx context.Context, req any, resp any) error {
 		}
 		return json.Unmarshal(res.payload, resp)
 	case <-ctx.Done():
-		e.pendingMu.Lock()
-		delete(e.pending, id)
-		e.pendingMu.Unlock()
+		i.pendingMu.Lock()
+		delete(i.pending, id)
+		i.pendingMu.Unlock()
 		return ctx.Err()
-	case <-e.closed:
+	case <-i.closed:
 		return errors.New("ipc: endpoint closed")
 	}
 }
 
-func (e *Endpoint) readLoop() {
-	defer e.Close()
+func (i *IPC) readLoop() {
+	defer i.Close()
 	for {
 		var msg wireMessage
-		if err := e.dec.Decode(&msg); err != nil {
+		if err := i.dec.Decode(&msg); err != nil {
 			return
 		}
 
 		switch msg.Type {
 		case "request":
-			go e.handleRequest(msg)
+			go i.handleRequest(msg)
 		case "response":
-			e.handleResponse(msg)
+			i.handleResponse(msg)
 		}
 	}
 }
 
-func (e *Endpoint) handleRequest(msg wireMessage) {
-	if e.handler == nil {
-		_ = e.send(wireMessage{Type: "response", ID: msg.ID, Error: &wireError{Message: "ipc: no handler"}})
+func (i *IPC) handleRequest(msg wireMessage) {
+	if i.handler == nil {
+		_ = i.send(wireMessage{Type: "response", ID: msg.ID, Error: &wireError{Message: "ipc: no handler"}})
 		return
 	}
 
-	payload, err := e.handler(context.Background(), msg.Payload)
+	payload, err := i.handler(context.Background(), msg.Payload)
 	if err != nil {
-		_ = e.send(wireMessage{Type: "response", ID: msg.ID, Error: &wireError{Message: err.Error()}})
+		_ = i.send(wireMessage{Type: "response", ID: msg.ID, Error: &wireError{Message: err.Error()}})
 		return
 	}
 
 	encoded, err := marshalPayload(payload)
 	if err != nil {
-		_ = e.send(wireMessage{Type: "response", ID: msg.ID, Error: &wireError{Message: err.Error()}})
+		_ = i.send(wireMessage{Type: "response", ID: msg.ID, Error: &wireError{Message: err.Error()}})
 		return
 	}
 
-	_ = e.send(wireMessage{Type: "response", ID: msg.ID, Payload: encoded})
+	_ = i.send(wireMessage{Type: "response", ID: msg.ID, Payload: encoded})
 }
 
-func (e *Endpoint) handleResponse(msg wireMessage) {
-	e.pendingMu.Lock()
-	ch, ok := e.pending[msg.ID]
+func (i *IPC) handleResponse(msg wireMessage) {
+	i.pendingMu.Lock()
+	ch, ok := i.pending[msg.ID]
 	if ok {
-		delete(e.pending, msg.ID)
+		delete(i.pending, msg.ID)
 	}
-	e.pendingMu.Unlock()
+	i.pendingMu.Unlock()
 
 	if !ok {
 		return
@@ -169,8 +168,8 @@ func (e *Endpoint) handleResponse(msg wireMessage) {
 	close(ch)
 }
 
-func (e *Endpoint) send(msg wireMessage) error {
-	e.writeMu.Lock()
-	defer e.writeMu.Unlock()
-	return e.enc.Encode(msg)
+func (i *IPC) send(msg wireMessage) error {
+	i.writeMu.Lock()
+	defer i.writeMu.Unlock()
+	return i.enc.Encode(msg)
 }

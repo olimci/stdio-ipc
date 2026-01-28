@@ -32,7 +32,9 @@ class Endpoint:
             if self._started:
                 return
             self._started = True
-            thread = threading.Thread(target=self._read_loop, name="ipc-read", daemon=True)
+            thread = threading.Thread(
+                target=self._read_loop, name="ipc-read", daemon=True
+            )
             thread.start()
 
     def close(self) -> None:
@@ -137,7 +139,11 @@ class Endpoint:
 
         error = msg.get("error")
         if error:
-            message = error.get("message", "ipc: error") if isinstance(error, dict) else str(error)
+            message = (
+                error.get("message", "ipc: error")
+                if isinstance(error, dict)
+                else str(error)
+            )
             waiter.put(RuntimeError(message))
             return
 
