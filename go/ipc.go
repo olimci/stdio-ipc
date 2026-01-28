@@ -22,6 +22,8 @@ type IPC struct {
 
 	nextID atomic.Uint64
 
+	startFunc func() error
+
 	startOnce sync.Once
 	closeOnce sync.Once
 	closed    chan struct{}
@@ -37,10 +39,14 @@ func New(r io.Reader, w io.Writer, handler Handler) *IPC {
 	}
 }
 
-func (i *IPC) Start() {
+func (i *IPC) Start() error {
+	var err error
 	i.startOnce.Do(func() {
 		go i.readLoop()
+		err = i.startFunc()
 	})
+
+	return err
 }
 
 func (i *IPC) Done() <-chan struct{} {

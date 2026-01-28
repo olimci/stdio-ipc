@@ -8,9 +8,7 @@ import (
 func FromCmd(cmd *exec.Cmd, handler Handler) (*IPC, error) {
 	i := New(cmd.Stdin, cmd.Stdout, handler)
 
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
+	i.startFunc = cmd.Start
 
 	return i, nil
 }
